@@ -1,0 +1,12 @@
+Source: ros-kinetic-h264-encoder-core
+Section: misc
+Priority: extra
+Maintainer: AWS RoboMaker <ros-contributions@amazon.com>
+Build-Depends: debhelper (>= 9.0.0), cmake, libavcodec-dev, libavformat-dev, libavutil-dev, libswscale-dev, ros-kinetic-aws-common
+Homepage: http://wiki.ros.org/h264_encoder_core
+Standards-Version: 3.9.2
+
+Package: ros-kinetic-h264-encoder-core
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libavcodec-dev, libavformat-dev, libavutil-dev, libswscale-dev, ros-kinetic-aws-common
+Description: Common base code for ROS1/ROS2 H264 encoder node
