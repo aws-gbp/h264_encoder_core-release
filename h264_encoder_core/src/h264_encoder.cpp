@@ -21,6 +21,7 @@
 #include <h264_encoder_core/h264_encoder.h>
 
 #include <cstdio>
+#include <dlfcn.h>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -29,7 +30,43 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
+using namespace Aws::Client;
 using namespace Aws::Utils::Logging;
+
+
+static bool is_omx_available()
+{
+  constexpr static const char * lib_names[3][2] = {
+    { "/opt/vc/lib/libopenmaxil.so", "/opt/vc/lib/libbcm_host.so" },
+    { "libOMX_Core.so", nullptr },
+    { "libOmxCore.so", nullptr }
+  };
+  constexpr static int num_libs = sizeof(lib_names) / sizeof(lib_names[0]);
+
+  for (int i = 0; i < num_libs; ++i) {
+    if (nullptr != lib_names[i][1]) {
+      void * lib2_handle = dlopen(lib_names[i][1], RTLD_NOW | RTLD_GLOBAL);
+      if (nullptr == lib2_handle) {
+        continue;
+      }
+
+      void * lib2_func = dlsym(lib2_handle, "bcm_host_init");
+      dlclose(lib2_handle);
+      if (nullptr == lib2_func) {
+        continue;
+      }
+    }
+
+    void * lib1_handle = dlopen(lib_names[i][0], RTLD_NOW | RTLD_GLOBAL);
+    if (nullptr != lib1_handle) {
+      dlclose(lib1_handle);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 
 namespace Aws {
 namespace Utils {
@@ -42,8 +79,8 @@ constexpr char kFpsDenominatorKey[] = "fps_denominator";
 constexpr char kCodecKey[] = "codec";
 constexpr char kBitrateKey[] = "bitrate";
 
-constexpr char kPrimaryDefaultCodec[] = "h264_omx";
-constexpr char kSecondaryDefaultCodec[] = "libx264";
+constexpr char kDefaultHardwareCodec[] = "h264_omx";
+constexpr char kDefaultSoftwareCodec[] = "libx264";
 constexpr float kFragmentDuration = 1.0f; /* set fragment duration to 1.0 second */
 constexpr int kDefaultMaxBFrames = 0;
 constexpr int kDefaultFpsNumerator = 24;
@@ -125,15 +162,15 @@ public:
     avcodec_register_all();
 
     /* find the mpeg1 video encoder */
-    AVCodec * codec;
+    AVCodec * codec = nullptr;
     AVDictionary * opts = nullptr;
     if (codec_name.empty()) {
-      codec = avcodec_find_encoder_by_name(kPrimaryDefaultCodec);
-      if (nullptr == codec) {
-        codec = avcodec_find_encoder_by_name(kSecondaryDefaultCodec);
+      codec = avcodec_find_encoder_by_name(kDefaultHardwareCodec);
+      if (nullptr == codec || !is_omx_available()) {
+        codec = avcodec_find_encoder_by_name(kDefaultSoftwareCodec);
         if (nullptr == codec) {
-          AWS_LOGSTREAM_ERROR(__func__, kPrimaryDefaultCodec << " and " << kSecondaryDefaultCodec
-                                                             << " codecs were not found!");
+          AWS_LOGSTREAM_ERROR(__func__, kDefaultHardwareCodec << " and " << kDefaultSoftwareCodec
+                                                              << " codecs were not available!");
           return AWS_ERR_NOT_FOUND;
         }
         av_dict_set(&opts, "preset", "veryfast", 0);
@@ -294,19 +331,19 @@ H264Encoder::~H264Encoder() {}
 
 AwsError H264Encoder::Initialize(const int src_width, const int src_height,
                                  const AVPixelFormat src_encoding,
-                                 const Aws::Client::ParameterReaderInterface & dst_params)
+                                 const ParameterReaderInterface & dst_params)
 {
   int dst_width, dst_height;
-  bool dims_set = (dst_params.ReadInt(kOutputWidthKey, dst_width) == Aws::AWS_ERR_OK &&
-                   dst_params.ReadInt(kOutputHeightKey, dst_height) == Aws::AWS_ERR_OK);
+  bool dims_set = (dst_params.ReadParam(ParameterPath(kOutputWidthKey), dst_width) == Aws::AWS_ERR_OK &&
+                   dst_params.ReadParam(ParameterPath(kOutputHeightKey), dst_height) == Aws::AWS_ERR_OK);
   if (!dims_set) {
     dst_width = src_width;
     dst_height = src_height;
   }
 
   int fps_num, fps_den;
-  bool fps_set = (dst_params.ReadInt(kFpsNumeratorKey, fps_num) == Aws::AWS_ERR_OK &&
-                  dst_params.ReadInt(kFpsDenominatorKey, fps_den) == Aws::AWS_ERR_OK);
+  bool fps_set = (dst_params.ReadParam(ParameterPath(kFpsNumeratorKey), fps_num) == Aws::AWS_ERR_OK &&
+                  dst_params.ReadParam(ParameterPath(kFpsDenominatorKey), fps_den) == Aws::AWS_ERR_OK);
   if (!fps_set) {
     AWS_LOG_WARN(__func__, "fps not set");
     fps_num = kDefaultFpsNumerator;
@@ -314,10 +351,10 @@ AwsError H264Encoder::Initialize(const int src_width, const int src_height,
   }
 
   std::string codec;
-  dst_params.ReadStdString(kCodecKey, codec);
+  dst_params.ReadParam(ParameterPath(kCodecKey), codec);
 
   int bitrate = kDefaultBitrate;
-  dst_params.ReadInt(kBitrateKey, bitrate);
+  dst_params.ReadParam(ParameterPath(kBitrateKey), bitrate);
 
   impl_ = std::unique_ptr<H264EncoderImpl>(new H264EncoderImpl());
 
