@@ -1,3 +1,26 @@
+## h264_encoder_core (dashing) - 2.0.2-1
+
+The packages in the `h264_encoder_core` repository were released into the `dashing` distro by running `/usr/local/bin/bloom-release h264_encoder_core --track dashing --rosdistro dashing -e` on `Fri, 20 Sep 2019 06:52:00 -0000`
+
+The `h264_encoder_core` package was released.
+
+Version of package(s) in repository `h264_encoder_core`:
+
+- upstream repository: https://github.com/aws-robotics/kinesisvideo-encoder-common.git
+- release repository: https://github.com/aws-gbp/h264_encoder_core-release.git
+- rosdistro version: `2.0.1-1`
+- old version: `2.0.1-1`
+- new version: `2.0.2-1`
+
+Versions of tools used:
+
+- bloom version: `0.8.0`
+- catkin_pkg version: `0.4.13`
+- rosdep version: `0.16.1`
+- rosdistro version: `0.7.4`
+- vcstools version: `0.1.42`
+
+
 ## h264_encoder_core (dashing) - 2.0.1-1
 
 The packages in the `h264_encoder_core` repository were released into the `dashing` distro by running `/home/ANT.AMAZON.COM/miaofei/.local/bin/bloom-release h264_encoder_core --track dashing --rosdistro dashing -e` on `Fri, 06 Sep 2019 22:39:25 -0000`
