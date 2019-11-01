@@ -34,39 +34,6 @@ using namespace Aws::Client;
 using namespace Aws::Utils::Logging;
 
 
-static bool is_omx_available()
-{
-  constexpr static const char * lib_names[3][2] = {
-    { "/opt/vc/lib/libopenmaxil.so", "/opt/vc/lib/libbcm_host.so" },
-    { "libOMX_Core.so", nullptr },
-    { "libOmxCore.so", nullptr }
-  };
-  constexpr static int num_libs = sizeof(lib_names) / sizeof(lib_names[0]);
-
-  for (int i = 0; i < num_libs; ++i) {
-    if (nullptr != lib_names[i][1]) {
-      void * lib2_handle = dlopen(lib_names[i][1], RTLD_NOW | RTLD_GLOBAL);
-      if (nullptr == lib2_handle) {
-        continue;
-      }
-
-      void * lib2_func = dlsym(lib2_handle, "bcm_host_init");
-      dlclose(lib2_handle);
-      if (nullptr == lib2_func) {
-        continue;
-      }
-    }
-
-    void * lib1_handle = dlopen(lib_names[i][0], RTLD_NOW | RTLD_GLOBAL);
-    if (nullptr != lib1_handle) {
-      dlclose(lib1_handle);
-      return true;
-    }
-  }
-
-  return false;
-}
-
 
 namespace Aws {
 namespace Utils {
@@ -98,11 +65,66 @@ public:
     dst_width_(-1),
     dst_height_(-1),
     convert_ctx_(nullptr),
+    bitrate_(-1),
     fps_num_(-1),
     fps_den_(-1),
     param_(nullptr),
     pic_in_(nullptr)
   {
+  }
+
+  /* Setup param_ 
+   * Function will fail if param_ is not nullptr
+   */
+  AwsError set_param(AVCodec * codec) {
+    if (nullptr != param_) {
+      AWS_LOG_ERROR(__func__, "Unable to setup codec context. param_ must be null");
+      return AWS_ERR_FAILURE;
+    }
+    param_ = avcodec_alloc_context3(codec);
+    if (nullptr == param_) {
+      AWS_LOG_ERROR(__func__, "Could not allocate video codec context");
+      return AWS_ERR_MEMORY;
+    }
+    /* put sample parameters */
+    param_->bit_rate = bitrate_;
+    /* resolution must be a multiple of two */
+    param_->width = dst_width_;
+    param_->height = dst_height_;
+    /* frames per second */
+    param_->time_base = (AVRational){fps_den_, fps_num_};
+    frame_duration_ = (1e6 * fps_den_) / fps_num_;
+    param_->gop_size = static_cast<int>(ceil(kFragmentDuration * fps_num_ / fps_den_));
+    param_->keyint_min = param_->gop_size - 1;
+    param_->max_b_frames = kDefaultMaxBFrames;
+    param_->pix_fmt = AV_PIX_FMT_YUV420P;
+
+    param_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    param_->flags2 &= ~AV_CODEC_FLAG2_LOCAL_HEADER;
+
+    return AWS_ERR_OK;
+  }
+  
+  // Attempts to open a codec
+  AwsError open_codec(AVCodec * codec, AVDictionary * opts) {
+    if (nullptr == codec) {
+      AWS_LOG_ERROR(__func__, "Invalid codec");
+      return AWS_ERR_FAILURE;
+    }
+
+    AWS_LOGSTREAM_INFO(__func__, "Attempting to open codec: " << codec->name);
+
+    if (AWS_ERR_OK != set_param(codec) || avcodec_open2(param_, codec, &opts) < 0 ) {
+      AWS_LOG_ERROR(__func__, "Could not open codec");
+      if (nullptr != param_) {
+	      avcodec_close(param_);
+	      av_free(param_);
+	      param_ = nullptr;
+      }
+      return AWS_ERR_FAILURE;
+    }
+   
+    return AWS_ERR_OK;
   }
 
   AwsError Initialize(const int src_width, const int src_height, const AVPixelFormat src_encoding,
@@ -158,6 +180,7 @@ public:
     dst_height_ = dst_height;
     fps_num_ = fps_num;
     fps_den_ = fps_den;
+    bitrate_ = bitrate;
 
     avcodec_register_all();
 
@@ -166,50 +189,27 @@ public:
     AVDictionary * opts = nullptr;
     if (codec_name.empty()) {
       codec = avcodec_find_encoder_by_name(kDefaultHardwareCodec);
-      if (nullptr == codec || !is_omx_available()) {
+      if (AWS_ERR_OK != open_codec(codec, opts)) {
         codec = avcodec_find_encoder_by_name(kDefaultSoftwareCodec);
-        if (nullptr == codec) {
+	      av_dict_set(&opts, "preset", "veryfast", 0);
+        av_dict_set(&opts, "tune", "zerolatency", 0);
+
+        if (AWS_ERR_OK != open_codec(codec, opts)) {
           AWS_LOGSTREAM_ERROR(__func__, kDefaultHardwareCodec << " and " << kDefaultSoftwareCodec
                                                               << " codecs were not available!");
           return AWS_ERR_NOT_FOUND;
         }
-        av_dict_set(&opts, "preset", "veryfast", 0);
-        av_dict_set(&opts, "tune", "zerolatency", 0);
       }
     } else {
       codec = avcodec_find_encoder_by_name(codec_name.c_str());
-      if (nullptr == codec) {
+      if (AWS_ERR_OK != open_codec(codec, opts)) {
         AWS_LOGSTREAM_ERROR(__func__, codec_name << " codec not found!");
         return AWS_ERR_NOT_FOUND;
       }
     }
     AWS_LOGSTREAM_INFO(__func__, "Encoding using " << codec->name << " codec");
-    param_ = avcodec_alloc_context3(codec);
-    if (nullptr == param_) {
-      AWS_LOG_ERROR(__func__, "Could not allocate video codec context");
-      return AWS_ERR_MEMORY;
-    }
-    /* put sample parameters */
-    param_->bit_rate = bitrate;
-    /* resolution must be a multiple of two */
-    param_->width = dst_width_;
-    param_->height = dst_height_;
-    /* frames per second */
-    param_->time_base = (AVRational){fps_den_, fps_num_};
-    frame_duration_ = (1e6 * fps_den_) / fps_num_;
-    param_->gop_size = static_cast<int>(ceil(kFragmentDuration * fps_num_ / fps_den_));
-    param_->keyint_min = param_->gop_size - 1;
-    param_->max_b_frames = kDefaultMaxBFrames;
-    param_->pix_fmt = AV_PIX_FMT_YUV420P;
+    
 
-    param_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    param_->flags2 &= ~AV_CODEC_FLAG2_LOCAL_HEADER;
-
-    /* open it */
-    if (avcodec_open2(param_, codec, &opts) < 0) {
-      AWS_LOG_ERROR(__func__, "Could not open codec");
-      return AWS_ERR_FAILURE;
-    }
 
     dst_width_ = param_->width;
     dst_height_ = param_->height;
@@ -278,6 +278,7 @@ public:
     pkt.size = 0;
 
     int got_output = 0;
+
     int ret = avcodec_encode_video2(param_, &pkt, pic_in_, &got_output);
     ++pic_in_->pts;
     if (ret < 0) {
@@ -316,6 +317,7 @@ private:
   int src_stride_;
   int dst_width_;
   int dst_height_;
+  int bitrate_;
   struct SwsContext * convert_ctx_;
 
   int fps_num_;
