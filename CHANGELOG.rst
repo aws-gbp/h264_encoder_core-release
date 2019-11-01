@@ -2,8 +2,12 @@
 Changelog for package h264_encoder_core
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-2.0.2 (2019-09-20)
+2.0.3 (2019-11-01)
 ------------------
+* Update codec opening test to include opts and params (`#37 <https://github.com/aws-robotics/kinesisvideo-encoder-common/issues/37>`_)
+  * Update codec opening test to include opts and params
+  * bump package version
+  Signed-off-by: Ryan Newell <ryanewel@amazon.com>
 * Backoff to software encoding if codec isn't available (`#35 <https://github.com/aws-robotics/kinesisvideo-encoder-common/issues/35>`_)
   * Backoff to software encoding if codec isn't available
   * Remove is_omx_available
