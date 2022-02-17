@@ -1,1 +1,1 @@
-{"trim": "", "parent": "debian/melodic/h264_encoder_core", "trimbase": "", "base": "221d9f5", "previous": "733344d"}
+{"base": "a52b4c2", "parent": "debian/melodic/h264_encoder_core", "previous": "c2e2376", "trim": "", "trimbase": ""}
