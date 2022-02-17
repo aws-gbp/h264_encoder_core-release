@@ -1,3 +1,26 @@
+## h264_encoder_core (melodic) - 2.0.4-1
+
+The packages in the `h264_encoder_core` repository were released into the `melodic` distro by running `/usr/local/bin/bloom-release h264_encoder_core --track melodic --rosdistro melodic -e` on `Thu, 17 Feb 2022 05:43:52 -0000`
+
+The `h264_encoder_core` package was released.
+
+Version of package(s) in repository `h264_encoder_core`:
+
+- upstream repository: https://github.com/jikawa-az/kinesisvideo-encoder-common.git
+- release repository: https://github.com/aws-gbp/h264_encoder_core-release.git
+- rosdistro version: `2.0.3-1`
+- old version: `2.0.3-1`
+- new version: `2.0.4-1`
+
+Versions of tools used:
+
+- bloom version: `0.10.7`
+- catkin_pkg version: `0.4.23`
+- rosdep version: `0.20.0`
+- rosdistro version: `0.8.3`
+- vcstools version: `0.1.42`
+
+
 ## h264_encoder_core (melodic) - 2.0.3-1
 
 The packages in the `h264_encoder_core` repository were released into the `melodic` distro by running `/usr/local/bin/bloom-release h264_encoder_core --track melodic --rosdistro melodic -e` on `Fri, 01 Nov 2019 17:16:47 -0000`
